@@ -1,14 +1,17 @@
 import { supabase } from '../lib/supabase';
 
-export interface Plant {
+// Aşama 2'den hatırladığımız Plant tipi (TypeScript arayüzü)
+export type Plant = {
   id: string;
   name: string;
-  species: string;
-  created_at: string;
-  owner_id?: string;
-}
+  species?: string;
+  image_url?: string;
+  owner_id: string;
+  created_at?: string;
+};
 
-export const getPlants = async (): Promise<Plant[]> => {
+// Aşama 2'den hatırladığımız tüm bitkileri çeken fonksiyon
+export async function getPlants(): Promise<Plant[]> {
   const { data, error } = await supabase
     .from('plants')
     .select('*')
@@ -18,5 +21,20 @@ export const getPlants = async (): Promise<Plant[]> => {
     throw new Error(error.message);
   }
 
-  return data as Plant[];
-};
+  return data || [];
+}
+
+// Aşama 5'te eklediğimiz ID'ye göre tek bitki çeken fonksiyon
+export async function getPlantById(id: string): Promise<Plant> {
+  const { data, error } = await supabase
+    .from('plants')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  
+  return data;
+}
