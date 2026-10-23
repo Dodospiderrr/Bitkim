@@ -1,72 +1,98 @@
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Button, FlatList, StyleSheet, Text, View } from 'react-native';
-import { getPlants, Plant } from '../../api/plants';
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { supabase } from '../../lib/supabase';
+
+type HomeData = {
+  quote: {
+    text: string;
+    author: string;
+  };
+  myPlants: {
+    id: string;
+    name: string;
+    species: string;
+    coverPhotoPath: string | null;
+    photoCount: number;
+  }[];
+};
 
 export default function HomeScreen() {
+  const [data, setData] = useState<HomeData | null>(null);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const [plants, setPlants] = useState<Plant[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchPlants = async () => {
+  useEffect(() => {
+    fetchHomeData();
+  }, []);
+
+  const fetchHomeData = async () => {
     try {
       setLoading(true);
-      setError(null);
-      const data = await getPlants();
-      setPlants(data);
-    } catch (err: any) {
-      setError(err.message || 'Bitkiler yüklenirken bir hata oluştu.');
+      const { data: result, error } = await supabase.rpc('get_home');
+
+      if (error) throw error;
+      if (result) {
+        setData(result as HomeData);
+      }
+    } catch (error: any) {
+      console.error('Ana sayfa verisi çekilemedi:', error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchPlants();
-  }, []);
-
-  // 1. Durum: Yükleniyor (Loading)
   if (loading) {
     return (
-      <View style={styles.center}>
+      <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#2e7d32" />
-        <Text style={styles.infoText}>Bitkiler yükleniyor...</Text>
-      </View>
-    );
-  }
-
-  // 2. Durum: Hata Oluştu (Error)
-  if (error) {
-    return (
-      <View style={styles.center}>
-        <Text style={[styles.infoText, { color: 'red' }]}>Hata: {error}</Text>
-        <Button title="Tekrar Dene" onPress={fetchPlants} />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Bitkilerim</Text>
-
-      {/* 3. Durum: Boş Liste (Empty) */}
-      {plants.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={styles.infoText}>Henüz hiç bitki eklememişsiniz.</Text>
+      {/* Günün Sözü Alanı */}
+      {data?.quote && (
+        <View style={styles.quoteCard}>
+          <Text style={styles.quoteText}>"{data.quote.text}"</Text>
+          <Text style={styles.quoteAuthor}>— {data.quote.author}</Text>
         </View>
-      ) : (
-        <FlatList
-          data={plants}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <Text style={styles.plantName}>{item.name}</Text>
-              <Text style={styles.plantSpecies}>{item.species}</Text>
-            </View>
-          )}
-        />
       )}
+
+      <Text style={styles.sectionTitle}>Bitkilerim</Text>
+
+      {/* Bitki Listesi */}
+      <FlatList
+        data={data?.myPlants || []}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContainer}
+        renderItem={({ item }) => {
+          const coverUrl = item.coverPhotoPath
+            ? supabase.storage.from('plant-photos').getPublicUrl(item.coverPhotoPath).data.publicUrl
+            : null;
+
+          return (
+            <TouchableOpacity 
+              style={styles.plantCard}
+              onPress={() => router.push({ pathname: '/gallery', params: { plantId: item.id } } as any)}
+            >
+              {coverUrl ? (
+                <Image source={{ uri: coverUrl }} style={styles.plantImage} />
+              ) : (
+                <View style={[styles.plantImage, styles.placeholderImage]}>
+                  <Text style={styles.placeholderText}>🌱</Text>
+                </View>
+              )}
+              <View style={styles.plantInfo}>
+                <Text style={styles.plantName}>{item.name}</Text>
+                <Text style={styles.plantSpecies}>{item.species || 'Tür belirtilmemiş'}</Text>
+                <Text style={styles.photoCountText}>{item.photoCount} Fotoğraf</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+      />
     </View>
   );
 }
@@ -74,46 +100,88 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f8f9fa',
+    padding: 16,
   },
-  center: {
+  centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    color: '#2e7d32',
-  },
-  infoText: {
-    fontSize: 16,
-    marginTop: 10,
-    color: '#666',
-  },
-  card: {
     backgroundColor: '#fff',
+  },
+  quoteCard: {
+    backgroundColor: '#e8f5e9',
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2e7d32',
+  },
+  quoteText: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    color: '#1b5e20',
+    marginBottom: 6,
+  },
+  quoteAuthor: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#388e3c',
+    textAlign: 'right',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
     marginBottom: 12,
-    elevation: 2,
+  },
+  listContainer: {
+    paddingBottom: 20,
+  },
+  plantCard: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.41,
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  plantImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: '#eee',
+  },
+  placeholderImage: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderText: {
+    fontSize: 24,
+  },
+  plantInfo: {
+    marginLeft: 12,
+    flex: 1,
   },
   plantName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#222',
   },
   plantSpecies: {
     fontSize: 14,
-    color: '#777',
-    fontStyle: 'italic',
+    color: '#666',
+    marginTop: 2,
+  },
+  photoCountText: {
+    fontSize: 12,
+    color: '#2e7d32',
     marginTop: 4,
+    fontWeight: '500',
   },
 });
